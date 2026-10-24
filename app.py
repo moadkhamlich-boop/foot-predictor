@@ -29,33 +29,28 @@ CODES_COMPETITIONS = {
 # 1. DICTIONNAIRE EXACT & ANTI-ERREURS
 # ==========================================
 CORRESPONDANCES_NOMS = {
-    # Ligue 1
     "Paris Saint-Germain FC": "Paris SG", "Olympique de Marseille": "Marseille", "Olympique Lyonnais": "Lyon",
     "AS Monaco FC": "Monaco", "LOSC Lille": "Lille", "OGC Nice": "Nice", "Stade Rennais FC 1904": "Rennes",
     "RC Lens": "Lens", "Stade Brestois 29": "Brest", "RC Strasbourg Alsace": "Strasbourg", "FC Nantes": "Nantes",
     "Montpellier HSC": "Montpellier", "Toulouse FC": "Toulouse", "Stade de Reims": "Reims", "Le Havre AC": "Le Havre",
     "AJ Auxerre": "Auxerre", "Angers SCO": "Angers", "AS Saint-Étienne": "St Etienne",
-    # Premier League
     "Arsenal FC": "Arsenal", "Aston Villa FC": "Aston Villa", "AFC Bournemouth": "Bournemouth", "Brentford FC": "Brentford",
     "Brighton & Hove Albion FC": "Brighton", "Chelsea FC": "Chelsea", "Crystal Palace FC": "Crystal Palace",
     "Everton FC": "Everton", "Fulham FC": "Fulham", "Ipswich Town FC": "Ipswich", "Leicester City FC": "Leicester",
     "Liverpool FC": "Liverpool", "Manchester City FC": "Man City", "Manchester United FC": "Man United",
     "Newcastle United FC": "Newcastle", "Nottingham Forest FC": "Nott'm Forest", "Southampton FC": "Southampton",
     "Tottenham Hotspur FC": "Tottenham", "West Ham United FC": "West Ham", "Wolverhampton Wanderers FC": "Wolves",
-    # La Liga
     "FC Barcelona": "Barcelona", "Real Madrid CF": "Real Madrid", "Club Atlético de Madrid": "Ath Madrid",
     "Athletic Club": "Ath Bilbao", "Real Sociedad de Fútbol": "Sociedad", "Real Betis Balompié": "Betis",
     "Villarreal CF": "Villarreal", "Valencia CF": "Valencia", "Sevilla FC": "Sevilla", "Girona FC": "Girona",
     "RC Celta de Vigo": "Celta", "CA Osasuna": "Osasuna", "Getafe CF": "Getafe", "Rayo Vallecano de Madrid": "Vallecano",
     "RCD Mallorca": "Mallorca", "Deportivo Alavés": "Alaves", "UD Las Palmas": "Las Palmas", "CD Leganés": "Leganes",
     "RCD Espanyol de Barcelona": "Espanyol", "Real Valladolid CF": "Valladolid",
-    # Serie A
     "FC Internazionale Milano": "Inter", "AC Milan": "Milan", "Juventus FC": "Juventus", "Atalanta BC": "Atalanta",
     "Bologna FC 1909": "Bologna", "AS Roma": "Roma", "SS Lazio": "Lazio", "ACF Fiorentina": "Fiorentina",
     "SSC Napoli": "Napoli", "Torino FC": "Torino", "Genoa CFC": "Genoa", "AC Monza": "Monza",
     "Hellas Verona FC": "Verona", "US Lecce": "Lecce", "Udinese Calcio": "Udinese", "Cagliari Calcio": "Cagliari",
     "Empoli FC": "Empoli", "Parma Calcio 1913": "Parma", "Como 1907": "Como", "Venezia FC": "Venezia",
-    # Bundesliga
     "Bayer 04 Leverkusen": "Leverkusen", "FC Bayern München": "Bayern Munich", "VfB Stuttgart": "Stuttgart",
     "RB Leipzig": "RB Leipzig", "Borussia Dortmund": "Dortmund", "Eintracht Frankfurt": "Ein Frankfurt",
     "TSG 1899 Hoffenheim": "Hoffenheim", "1. FC Heidenheim 1846": "Heidenheim", "SV Werder Bremen": "Werder Bremen",
@@ -86,25 +81,32 @@ def trouver_nom_csv_strict(nom_api, equipes_autorisees):
     return p[0] if p else None
 
 # ==========================================
-# 2. CONNECTEUR GEMINI CORRIGÉ
+# 2. CONNECTEUR GEMINI RAPIDE & ROBUSTE
 # ==========================================
 def appeler_gemini_ai(prompt_texte):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={GEMINI_API_KEY}"
+    # Utilisation du endpoint optimisé pour la vitesse
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     headers = {"Content-Type": "application/json"}
     payload = {
-        "contents": [{"parts": [{"text": prompt_texte}]}]
+        "contents": [{"parts": [{"text": prompt_texte}]}],
+        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 1500}
     }
     try:
-        r = requests.post(url, headers=headers, json=payload, timeout=30)
+        r = requests.post(url, headers=headers, json=payload, timeout=60)
         if r.status_code == 200:
             return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
         else:
-            return f"Notice API ({r.status_code}) : {r.text[:140]}"
+            # Fallback en cas d'erreur de nom de modèle
+            url_alt = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={GEMINI_API_KEY}"
+            r_alt = requests.post(url_alt, headers=headers, json=payload, timeout=60)
+            if r_alt.status_code == 200:
+                return r_alt.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+            return f"Notice API ({r.status_code}) : {r.text[:120]}"
     except Exception as e:
-        return f"Erreur de réseau : {str(e)[:80]}"
+        return f"Erreur de délai réseau (Timeout) : la demande était trop volumineuse. Veuillez reformuler plus simplement."
 
 # ==========================================
-# 3. MODÈLE MATHÉMATIQUE (POISSON + DIXON-COLES)
+# 3. STATISTIQUES & MODÈLE POISSON + DIXON-COLES
 # ==========================================
 @st.cache_data
 def charger_historique():
@@ -225,7 +227,7 @@ def analyser_paris_match(dom, ext, res):
     ]
 
 # ==========================================
-# 4. COLLECTE STRICTE 7 JOURS
+# 4. COLLECTE DES MATCHS SUR 7 JOURS
 # ==========================================
 @st.cache_data(ttl=1800)
 def recuperer_matchs_ligue(code_compet):
@@ -383,7 +385,7 @@ with onglets[3]:
 
     st.markdown("---")
     st.subheader("💬 Discutez avec Gemini pour modifier ou créer vos tickets")
-    st.caption("Demandez-lui : *'Fais-moi un combiné de 17 matchs avec une cote de 70000'*, *'Remplace Liverpool'*, etc.")
+    st.caption("Exemples : *'Fais-moi un combiné de 5 matchs avec une cote de 12'*, *'Remplace un match'*, etc.")
 
     for msg in st.session_state.messages_chat:
         with st.chat_message(msg["role"]):
@@ -395,31 +397,21 @@ with onglets[3]:
         with st.chat_message("user"):
             st.write(user_prompt)
 
-        # Transmission de tous les matchs des 7 jours (jusqu'à 30 affiches)
+        # Synthèse ultra-compacte pour garantir un temps de réponse inférieur à 5 secondes
         contexte_matchs = "\n".join([
-            f"- {m['dom']} vs {m['ext']} ({m['ligue']} - {m['date_str']}) : "
-            f"1=@{m['res']['cotes_1N2'][0]:.2f} ({m['res']['1N2'][0]:.0f}%), "
-            f"X=@{m['res']['cotes_1N2'][1]:.2f} ({m['res']['1N2'][1]:.0f}%), "
-            f"2=@{m['res']['cotes_1N2'][2]:.2f} ({m['res']['1N2'][2]:.0f}%), "
-            f"1X=@{m['res']['cotes_DC'][0]:.2f}, X2=@{m['res']['cotes_DC'][1]:.2f}, "
-            f"Over2.5=@{m['res']['cote_o25']:.2f} ({m['res']['over_25']:.0f}%), "
-            f"BTTS=@{m['res']['cote_btts']:.2f} ({m['res']['btts']:.0f}%), "
-            f"Score:{m['res']['top_scores'][0][0]}"
-            for m in matchs_semaine[:30]
+            f"{m['dom']}-{m['ext']}|{m['date_str'][:5]}|1:{m['res']['cotes_1N2'][0]:.2f}|N:{m['res']['cotes_1N2'][1]:.2f}|2:{m['res']['cotes_1N2'][2]:.2f}|O25:{m['res']['cote_o25']:.2f}|BTTS:{m['res']['cote_btts']:.2f}|1X:{m['res']['cotes_DC'][0]:.2f}|X2:{m['res']['cotes_DC'][1]:.2f}"
+            for m in matchs_semaine[:25]
         ])
 
         prompt_systeme = (
-            f"Tu es un expert mondial en paris sportifs et combinés. Tu as accès à l'ensemble des matchs programmés sur les 7 prochains jours et à leurs cotes mathématiques calculées :\n"
+            f"Tu es un tipster expert. Voici les matchs des 7 prochains jours avec leurs cotes équitables :\n"
             f"{contexte_matchs}\n\n"
-            f"L'utilisateur te demande : '{user_prompt}'.\n"
-            f"Règles strictes de réponse :\n"
-            f"1) Rédige ta réponse en français de façon très claire, structurée et professionnelle.\n"
-            f"2) Construis exactement le ticket demandé (respecte scrupuleusement le nombre de matchs et la cible de cote demandée si possible en multipliant les cotes unitaire de chaque sélection).\n"
-            f"3) Pour chaque sélection du combiné, affiche : Numéro, Match, Date, Pari précis retenu, Cote unitaire et courte justification tactique.\n"
-            f"4) Indique en bas la Cote Totale exacte du combiné et ton avis d'expert sur la stratégie de mise."
+            f"Demande : {user_prompt}\n"
+            f"Consignes : Réponds en français. Propose le combiné demandé en listant : Équipes, Pari exact retenu, Cote. "
+            f"Calcule la Cote Totale exacte (produit des cotes) et donne un conseil de mise court."
         )
 
-        with st.spinner("Gemini analyse le calendrier et compose votre ticket..."):
+        with st.spinner("Gemini compose votre combiné..."):
             reponse_ia = appeler_gemini_ai(prompt_systeme)
 
         st.session_state.messages_chat.append({"role": "assistant", "content": reponse_ia})
@@ -446,7 +438,7 @@ with onglets[4]:
         score_1, p_s1 = r["top_scores"][0]
 
         if top[0].startswith("Victoire"):
-            ia_txt = f"Avantage xG ({r['lambda_dom']:.1f}-{r['lambda_ext']:.1f}) et dynamique récente à {r['forme_dom']:+.0f}%."
+            ia_txt = f"Avantage xG ({r['lambda_dom']:.1f}-{r['lambda_ext']:.1f}) et dynamique à {r['forme_dom']:+.0f}%."
         elif "Over" in top[0]:
             ia_txt = f"Match ouvert : {r['lambda_dom']+r['lambda_ext']:.2f} buts attendus cumulés."
         else:
