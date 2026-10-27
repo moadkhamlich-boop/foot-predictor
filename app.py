@@ -11,7 +11,6 @@ from datetime import datetime, timedelta, timezone
 # ==========================================
 st.set_page_config(page_title="Direct Foot Pro AI", page_icon="⚽", layout="wide")
 
-# Injection CSS pour utiliser 100% de l'écran PC tout en gardant le style mobile
 st.markdown("""
     <style>
     .block-container {
@@ -29,12 +28,8 @@ HEADERS = {"X-Auth-Token": API_TOKEN}
 GEMINI_API_KEY = "AQ.Ab8RN6L5dMyifo8wWnczhTj4dpkYg68sRGYYIMFDvJNTeW2kpA"
 
 CODES_COMPETITIONS = {
-    "UEFA Champions League": "CL",
-    "Premier League": "PL",
-    "La Liga": "PD",
-    "Serie A": "SA",
-    "Bundesliga": "BL1",
-    "Ligue 1": "FL1"
+    "UEFA Champions League": "CL", "Premier League": "PL", "La Liga": "PD",
+    "Serie A": "SA", "Bundesliga": "BL1", "Ligue 1": "FL1"
 }
 
 # ==========================================
@@ -72,8 +67,7 @@ CORRESPONDANCES_NOMS = {
 }
 
 def trouver_nom_csv_strict(nom_api, equipes_autorisees):
-    if not nom_api or len(equipes_autorisees) == 0:
-        return None
+    if not nom_api or len(equipes_autorisees) == 0: return None
     if nom_api in CORRESPONDANCES_NOMS:
         c = CORRESPONDANCES_NOMS[nom_api]
         if c in equipes_autorisees: return c
@@ -103,22 +97,19 @@ def appeler_gemini_ai(prompt_texte):
     }
     try:
         r = requests.post(url, headers=headers, json=payload, timeout=60)
-        if r.status_code == 200:
-            return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+        if r.status_code == 200: return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
         else:
             url_alt = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={GEMINI_API_KEY}"
             r_alt = requests.post(url_alt, headers=headers, json=payload, timeout=60)
             if r_alt.status_code == 200: return r_alt.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
             return f"Notice API ({r.status_code}) : {r.text[:120]}"
-    except Exception:
-        return f"Erreur de délai réseau (Timeout). Veuillez reformuler plus simplement."
+    except Exception: return f"Erreur de délai réseau (Timeout). Veuillez reformuler plus simplement."
 
 # ==========================================
 # 3. STATISTIQUES & MODÈLE (MI-TEMPS INTÉGRÉES)
 # ==========================================
 @st.cache_data
-def charger_historique():
-    return pd.read_csv("historique_europe_complet.csv")
+def charger_historique(): return pd.read_csv("historique_europe_complet.csv")
 
 df_total = charger_historique()
 TOUTES_EQUIPES_CSV = sorted(list(set(df_total['Domicile'].unique()).union(set(df_total['Exterieur'].unique()))))
@@ -131,8 +122,7 @@ def obtenir_equipes_ligue(nom_compet):
 
 def calculer_forces_completes(equipe):
     matchs = df_total[(df_total['Domicile'] == equipe) | (df_total['Exterieur'] == equipe)]
-    if len(matchs) == 0:
-        return 1.0, 1.0, 1.0, 1.0, 1.50, 1.20, 0.44, 0.44, 0.0
+    if len(matchs) == 0: return 1.0, 1.0, 1.0, 1.0, 1.50, 1.20, 0.44, 0.44, 0.0
 
     df_ligue = df_total[df_total['Championnat'] == matchs['Championnat'].iloc[0]]
     moy_dom, moy_ext = df_ligue['Buts_Dom'].mean(), df_ligue['Buts_Ext'].mean()
@@ -150,10 +140,8 @@ def calculer_forces_completes(equipe):
     att_e_f = (m_ext_rec['Buts_Ext'].mean() / moy_ext) if len(m_ext_rec) > 0 else att_e_h
     def_e_f = (m_ext_rec['Buts_Dom'].mean() / moy_dom) if len(m_ext_rec) > 0 else def_e_h
 
-    att_d = (0.60 * att_d_h) + (0.40 * att_d_f)
-    def_d = (0.60 * def_d_h) + (0.40 * def_d_f)
-    att_e = (0.60 * att_e_h) + (0.40 * att_e_f)
-    def_e = (0.60 * def_e_h) + (0.40 * def_e_f)
+    att_d, def_d = (0.60 * att_d_h) + (0.40 * att_d_f), (0.60 * def_d_h) + (0.40 * def_d_f)
+    att_e, def_e = (0.60 * att_e_h) + (0.40 * att_e_f), (0.60 * def_e_h) + (0.40 * def_e_f)
 
     indice_forme = ((att_d_f + att_e_f) / max(0.5, (att_d_h + att_e_h)) - 1.0) * 100
     r_mt_d, r_mt_e = 0.44, 0.44
@@ -194,20 +182,16 @@ def predire_rencontre(equipe_dom, equipe_ext, est_europe=False, malus_dom=0.0, m
     under_25 = 100.0 - over_25
     btts_oui = np.sum(mat_ft[1:, 1:]) * 100
     btts_non = 100.0 - btts_oui
-    top_scores = sorted(scores_dict.items(), key=lambda x: x[1], reverse=True)[:5]
+    top_scores = sorted(scores_dict.items(), key=lambda x: x[1], reverse=True)[:10]
 
-    # --- NOUVEAUX CALCULS PAR MI-TEMPS ---
     l_d_mt1, l_e_mt1 = r_mt_d * lambda_dom, r_mt_e * lambda_ext
     l_d_mt2, l_e_mt2 = (1 - r_mt_d) * lambda_dom, (1 - r_mt_e) * lambda_ext
-    
     p0_mt1 = np.exp(-l_d_mt1 - l_e_mt1)
     p1_mt1 = (l_d_mt1 + l_e_mt1) * p0_mt1
     over_15_mt1 = (1.0 - p0_mt1 - p1_mt1) * 100
-    
     p0_mt2 = np.exp(-l_d_mt2 - l_e_mt2)
     p1_mt2 = (l_d_mt2 + l_e_mt2) * p0_mt2
     over_15_mt2 = (1.0 - p0_mt2 - p1_mt2) * 100
-
     but_chaque_mt = (1.0 - p0_mt1) * (1.0 - p0_mt2) * 100
 
     return {
@@ -227,7 +211,6 @@ def predire_rencontre(equipe_dom, equipe_ext, est_europe=False, malus_dom=0.0, m
     }
 
 def analyser_paris_match(dom, ext, res):
-    """Génère le panel complet des marchés avec cotes diversifiées."""
     return [
         {"pari": f"Victoire {dom} (1)", "prob": res["1N2"][0], "cote": res["cotes_1N2"][0], "type": "1"},
         {"pari": f"Victoire {ext} (2)", "prob": res["1N2"][2], "cote": res["cotes_1N2"][2], "type": "2"},
@@ -243,25 +226,41 @@ def analyser_paris_match(dom, ext, res):
     ]
 
 def selectionner_meilleur_pari_value(res, tous_paris):
-    """Filtre de Valeur (Anti-Cotes Mortes) et Cohérence Tactique."""
-    # 1. Bannir les cotes inférieures à @1.40
     candidats = [p for p in tous_paris if p["cote"] >= 1.40]
     if not candidats: candidats = tous_paris
     
-    score_1 = res["top_scores"][0][0]
+    score_1_brut = res["top_scores"][0][0]
     xg_total = res["lambda_dom"] + res["lambda_ext"]
 
-    # 2. Filtrage de Cohérence : Interdit de conseiller Over 2.5 si on prévoit 0-0 ou 1-0
-    if score_1 in ["0 - 0", "1 - 0", "0 - 1", "1 - 1"]:
-        if xg_total < 2.5:
-            candidats = [p for p in candidats if p["type"] not in ["O25", "O15_MT1", "O15_MT2", "BCM", "BTTS_O", "O15"]]
+    if score_1_brut in ["0 - 0", "1 - 0", "0 - 1", "1 - 1"]:
+        if xg_total < 2.5: candidats = [p for p in candidats if p["type"] not in ["O25", "O15_MT1", "O15_MT2", "BCM", "BTTS_O", "O15"]]
     else:
-        # Si on prévoit un match riche en buts (2-1, 2-2, 3-1), on interdit les Under et BTTS Non
-        if xg_total > 2.5:
-            candidats = [p for p in candidats if p["type"] not in ["U25", "BTTS_N", "X"]]
+        if xg_total > 2.5: candidats = [p for p in candidats if p["type"] not in ["U25", "BTTS_N", "X"]]
             
     if not candidats: candidats = tous_paris
-    return sorted(candidats, key=lambda x: x["prob"], reverse=True)[0]
+    top_pari = sorted(candidats, key=lambda x: x["prob"], reverse=True)[0]
+
+    # --- NOUVEAU : ALIGNEMENT LOGIQUE DU SCORE EXACT SUR LE PARI ---
+    score_aligne = res["top_scores"][0] 
+    t_pari = top_pari["type"]
+    
+    for sc_str, sc_prob in res["top_scores"]:
+        s_d, s_e = int(sc_str.split(" - ")[0]), int(sc_str.split(" - ")[1])
+        match_ok = False
+        
+        if t_pari == "1" and s_d > s_e: match_ok = True
+        elif t_pari == "2" and s_d < s_e: match_ok = True
+        elif t_pari == "X" and s_d == s_e: match_ok = True
+        elif t_pari in ["O25", "O15", "BCM", "O15_MT1", "O15_MT2"] and (s_d + s_e) >= 2: match_ok = True
+        elif t_pari == "U25" and (s_d + s_e) <= 2: match_ok = True
+        elif t_pari == "BTTS_O" and s_d > 0 and s_e > 0: match_ok = True
+        elif t_pari == "BTTS_N" and (s_d == 0 or s_e == 0): match_ok = True
+        
+        if match_ok:
+            score_aligne = (sc_str, sc_prob)
+            break
+
+    return top_pari, score_aligne
 
 # ==========================================
 # 4. COLLECTE DES MATCHS SUR 7 JOURS
@@ -272,14 +271,12 @@ def recuperer_matchs_ligue(code_compet):
     try:
         req = requests.get(url, headers=HEADERS, timeout=6)
         return req.json().get("matches", [])[:25]
-    except Exception:
-        return []
+    except Exception: return []
 
 def collecter_matchs_7_jours():
     maintenant = datetime.now(timezone.utc)
     limite_7j = maintenant + timedelta(days=7)
-    liste_propre = []
-    vus = set()
+    liste_propre, vus = [], set()
 
     for nom_compet, code_api in CODES_COMPETITIONS.items():
         equipes_autorisees = obtenir_equipes_ligue(nom_compet)
@@ -291,7 +288,6 @@ def collecter_matchs_7_jours():
             except Exception: continue
             if not (maintenant <= dt_match <= limite_7j): continue
 
-            # Filtre Anti-Doublons (ex: Man City 2 matchs le même jour par erreur de l'API)
             cle_match = f"{m['homeTeam']['name']}_{dt_match.date()}"
             if cle_match in vus: continue
             vus.add(cle_match)
@@ -330,8 +326,7 @@ for idx, onglet in enumerate(onglets[:3]):
         elif idx == 1: m_jour = [m for m in matchs_semaine if m["jour_date"] == date_dem]
         else: m_jour = [m for m in matchs_semaine if m["jour_date"] > date_dem]
 
-        if not m_jour:
-            st.info("Aucun match à venir programmé sur ce créneau.")
+        if not m_jour: st.info("Aucun match à venir programmé sur ce créneau.")
         else:
             for nom_ligue in CODES_COMPETITIONS.keys():
                 m_ligue = [m for m in m_jour if m["ligue"] == nom_ligue]
@@ -375,10 +370,9 @@ with onglets[3]:
         ticket, vus = [], set()
         for m in pool:
             if m["id"] in vus: continue
-            # Filtre anti-cotes mortes et cohérence sur les matchs du ticket
             bons_paris = [p for p in m["paris"] if min_cote <= p["cote"] <= max_cote and p["prob"] >= min_prob]
-            score_1, xg_t = m["res"]["top_scores"][0][0], m["res"]["lambda_dom"] + m["res"]["lambda_ext"]
-            if score_1 in ["0 - 0", "1 - 0", "0 - 1", "1 - 1"]:
+            score_1_b, xg_t = m["res"]["top_scores"][0][0], m["res"]["lambda_dom"] + m["res"]["lambda_ext"]
+            if score_1_b in ["0 - 0", "1 - 0", "0 - 1", "1 - 1"]:
                 if xg_t < 2.5: bons_paris = [p for p in bons_paris if p["type"] not in ["O25", "O15_MT1", "O15_MT2", "BCM", "BTTS_O"]]
             else:
                 if xg_t > 2.5: bons_paris = [p for p in bons_paris if p["type"] not in ["U25", "BTTS_N", "X"]]
@@ -399,33 +393,32 @@ with onglets[3]:
     with onglet_t1:
         if t_secu:
             st.metric("Cote Totale", f"@{np.prod([x['cote'] for x in t_secu]):.2f}")
-            for item in t_secu: st.write(f"• **{item['match']}** : `{item['pari']}` (@{item['cote']:.2f} — {item['prob']:.1f}%)")
+            for item in t_secu: st.write(f"• **{item['match']}** : `{item['pari']}` (@{item['cote']:.2f})")
         else: st.info("Matchs insuffisants dans cette fourchette.")
     with onglet_t2:
         if t_value:
             st.metric("Cote Totale", f"@{np.prod([x['cote'] for x in t_value]):.2f}")
-            for item in t_value: st.write(f"• **{item['match']}** : `{item['pari']}` (@{item['cote']:.2f} — {item['prob']:.1f}%)")
+            for item in t_value: st.write(f"• **{item['match']}** : `{item['pari']}` (@{item['cote']:.2f})")
         else: st.info("Matchs insuffisants dans cette fourchette.")
     with onglet_t3:
         if t_grosse:
             st.metric("Cote Totale", f"@{np.prod([x['cote'] for x in t_grosse]):.2f}")
-            for item in t_grosse: st.write(f"• **{item['match']}** : `{item['pari']}` (@{item['cote']:.2f} — {item['prob']:.1f}%)")
+            for item in t_grosse: st.write(f"• **{item['match']}** : `{item['pari']}` (@{item['cote']:.2f})")
         else: st.info("Matchs insuffisants dans cette fourchette.")
 
     st.markdown("---")
     st.subheader("💬 Chat Tipster Gemini (17+ matchs)")
     for msg in st.session_state.messages_chat:
         with st.chat_message(msg["role"]): st.write(msg["content"])
-    user_prompt = st.chat_input("Ex: 'Fais-moi un combiné de 17 matchs avec une cote de 1000'...")
     
+    user_prompt = st.chat_input("Ex: 'Fais-moi un combiné de 17 matchs avec une cote de 1000'...")
     if user_prompt:
         st.session_state.messages_chat.append({"role": "user", "content": user_prompt})
         with st.chat_message("user"): st.write(user_prompt)
 
         ctx = "\n".join([f"{m['dom']}-{m['ext']}|1:@{m['res']['cotes_1N2'][0]:.2f}|2:@{m['res']['cotes_1N2'][2]:.2f}|O25:@{m['res']['cote_o25']:.2f}|BTTS:@{m['res']['cote_btts']:.2f}|BCM:@{m['res']['cote_bcm']:.2f}" for m in matchs_semaine[:35]])
-        prompt_systeme = f"Expert paris sportifs. Calendrier:\n{ctx}\nDemande: {user_prompt}\nRédige le ticket combiné exact demandé avec équipes, paris variés et cote totale multipliée."
-        with st.spinner("Gemini compose votre combiné..."):
-            reponse_ia = appeler_gemini_ai(prompt_systeme)
+        prompt_systeme = f"Expert paris sportifs. Calendrier:\n{ctx}\nDemande: {user_prompt}\nRédige le ticket exact demandé avec équipes, paris variés et cote totale multipliée."
+        with st.spinner("Gemini compose votre combiné..."): reponse_ia = appeler_gemini_ai(prompt_systeme)
         st.session_state.messages_chat.append({"role": "assistant", "content": reponse_ia})
         with st.chat_message("assistant"): st.write(reponse_ia)
 
@@ -438,11 +431,13 @@ with onglets[4]:
     lignes_tableau = []
     for m in matchs_semaine:
         r = m["res"]
-        # Sélection intelligente du meilleur pari par valeur
-        top = selectionner_meilleur_pari_value(r, m["paris"])
-        score_1, p_s1 = r["top_scores"][0]
+        
+        # 1. Sélection intelligente
+        top, score_aligne = selectionner_meilleur_pari_value(r, m["paris"])
+        
+        # 2. Utilisation du score ALIGNÉ sur le pari (ex: plus de 1-1 si Victoire 1)
+        score_1, p_s1 = score_aligne
 
-        # Texte contextuel de l'IA (instantané)
         t = top["type"]
         if t in ["1", "2"]: ia_txt = f"Avantage tactique net (xG {r['lambda_dom']:.1f}-{r['lambda_ext']:.1f})."
         elif t == "X": ia_txt = f"Forte neutralisation attendue (xG proches)."
@@ -461,5 +456,5 @@ with onglets[4]:
 
     if lignes_tableau:
         df_scan = pd.DataFrame(lignes_tableau)
-        st.success(f"{len(df_scan)} matchs analysés. Cotes inutiles filtrées.")
+        st.success(f"{len(df_scan)} matchs analysés. Alignement logique appliqué.")
         st.dataframe(df_scan, use_container_width=True, hide_index=True)
