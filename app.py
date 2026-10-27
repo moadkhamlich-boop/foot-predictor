@@ -470,4 +470,4 @@ with onglets[4]:
         })
         
     # --- AFFICHAGE DU TOP 6 ---
-    st.subheader("🎯 Le
+   st.subheader("🎯 Le Top 6 des Scores Exacts (7 Prochains Jours)")
