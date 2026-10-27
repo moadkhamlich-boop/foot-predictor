@@ -441,10 +441,18 @@ with onglets[4]:
     
     for m in matchs_semaine:
         r = m["res"]
+# ==========================================
+# 7. ONGLET 5 : SCANNER INSTANTANÉ (ANTI-COTES MORTES)
+# ==========================================
+with onglets[4]:
+    tous_scores_exacts = []
+    lignes_tableau = []
+    
+    for m in matchs_semaine:
+        r = m["res"]
         top, score_aligne = selectionner_meilleur_pari_value(r, m["paris"])
         score_1, p_s1 = score_aligne
         
-        # Enregistrement pour le Top 6 (on garde la date, les équipes, le score et la proba)
         tous_scores_exacts.append({
             "match": f"{m['dom']} vs {m['ext']}",
             "date": m["date_str"],
@@ -454,23 +462,31 @@ with onglets[4]:
         })
 
         t = top["type"]
-        if t in ["1", "2"]: ia_txt = f"Avantage tactique net (xG {r['lambda_dom']:.1f}-{r['lambda_ext']:.1f})."
-        elif t == "X": ia_txt = f"Forte neutralisation attendue (xG proches)."
-        elif t in ["O25", "BCM", "O15_MT1", "O15_MT2"]: ia_txt = f"Configuration très ouverte : {r['lambda_dom']+r['lambda_ext']:.2f} buts attendus."
-        elif t == "U25": ia_txt = f"Match fermé et verrouillé."
-        elif t == "BTTS_O": ia_txt = f"Deux attaques prolifiques ({r['btts']:.0f}% BTTS)."
-        elif t == "BTTS_N": ia_txt = f"Déséquilibre offensif ou match très défensif."
-        else: ia_txt = f"Pari de couverture avec probabilité de {top['prob']:.1f}%."
+        if t in ["1", "2"]:
+            ia_txt = f"Avantage tactique net (xG {r['lambda_dom']:.1f}-{r['lambda_ext']:.1f})."
+        elif t == "X":
+            ia_txt = f"Forte neutralisation attendue (xG proches)."
+        elif t in ["O25", "BCM", "O15_MT1", "O15_MT2"]:
+            ia_txt = f"Configuration très ouverte : {r['lambda_dom']+r['lambda_ext']:.2f} buts attendus."
+        elif t == "U25":
+            ia_txt = f"Match fermé et verrouillé."
+        elif t == "BTTS_O":
+            ia_txt = f"Deux attaques prolifiques ({r['btts']:.0f}% BTTS)."
+        elif t == "BTTS_N":
+            ia_txt = f"Déséquilibre offensif ou match très défensif."
+        else:
+            ia_txt = f"Pari de couverture avec probabilité de {top['prob']:.1f}%."
 
         lignes_tableau.append({
-            "Date": m["date_str"], "Ligue": m["ligue"], "Match": f"{m['dom']} vs {m['ext']}",
+            "Date": m["date_str"],
+            "Ligue": m["ligue"],
+            "Match": f"{m['dom']} vs {m['ext']}",
             "Pari Recommandé": f"{top['pari']} ({top['prob']:.1f}% | @{top['cote']:.2f})",
             "Score Probable": f"{score_1} ({p_s1*100:.0f}%)",
             "Analyse Tactique": ia_txt
         })
         
-    # --- AFFICHAGE DU TOP 6 ---
-st.subheader("🎯 Le Top 6 des Scores Exacts (7 Prochains Jours)")
+    st.subheader("🎯 Le Top 6 des Scores Exacts (7 Prochains Jours)")
     top_6 = sorted(tous_scores_exacts, key=lambda x: x["prob"], reverse=True)[:6]
     
     if top_6:
