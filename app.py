@@ -173,7 +173,6 @@ def predire_rencontre(equipe_dom, equipe_ext, est_europe=False, malus_dom=0.0, m
             mat_ft[i, j] = max(0.0, p_base * tau)
     mat_ft = mat_ft / np.sum(mat_ft)
     
-    # On calcule le top 15 au lieu de 10 pour chercher les scores riches (3-1, 2-2)
     scores_dict = {f"{i} - {j}": mat_ft[i, j] for i in range(7) for j in range(7)}
     top_scores = sorted(scores_dict.items(), key=lambda x: x[1], reverse=True)[:15]
 
@@ -223,8 +222,7 @@ def analyser_paris_match(dom, ext, res):
         {"pari": "Les 2 Marquent (Non)", "prob": res["btts_non"], "cote": res["cote_btts_non"], "type": "BTTS_N"},
         {"pari": "But dans chaque Mi-Temps", "prob": res["but_chaque_mt"], "cote": res["cote_bcm"], "type": "BCM"},
         {"pari": "Over 1.5 en 1ère MT", "prob": res["over_15_mt1"], "cote": res["cote_o15_mt1"], "type": "O15_MT1"},
-        {"pari": "Over 1.5 en 2ème MT", "prob": res["over_15_mt2"], "cote": res["cote_o15_mt2"], "type": "O15_MT2"},
-        {"pari": "Over 1.5 Buts", "prob": res["over_15"], "cote": res["cote_o15"], "type": "O15"}
+        {"pari": "Over 1.5 en 2ème MT", "prob": res["over_15_mt2"], "cote": res["cote_o15_mt2"], "type": "O15_MT2"}
     ]
 
 def selectionner_meilleur_pari_value(res, tous_paris):
@@ -236,14 +234,13 @@ def selectionner_meilleur_pari_value(res, tous_paris):
     xg_diff = res["lambda_dom"] - res["lambda_ext"]
 
     if score_1_brut in ["0 - 0", "1 - 0", "0 - 1", "1 - 1"]:
-        if xg_total < 2.5: candidats = [p for p in candidats if p["type"] not in ["O25", "O15_MT1", "O15_MT2", "BCM", "BTTS_O", "O15"]]
+        if xg_total < 2.5: candidats = [p for p in candidats if p["type"] not in ["O25", "O15_MT1", "O15_MT2", "BCM", "BTTS_O"]]
     else:
         if xg_total > 2.5: candidats = [p for p in candidats if p["type"] not in ["U25", "BTTS_N", "X"]]
             
     if not candidats: candidats = tous_paris
     top_pari = sorted(candidats, key=lambda x: x["prob"], reverse=True)[0]
 
-    # --- SMART SCORE SELECTOR (Diversité Visuelle via xG) ---
     t_pari = top_pari["type"]
     meilleur_score = res["top_scores"][0]
     meilleur_poids = -1.0
@@ -252,7 +249,6 @@ def selectionner_meilleur_pari_value(res, tous_paris):
         s_d, s_e = int(sc_str.split(" - ")[0]), int(sc_str.split(" - ")[1])
         match_ok = False
         
-        # Filtre d'alignement logique avec le pari principal
         if t_pari == "1" and s_d > s_e: match_ok = True
         elif t_pari == "2" and s_d < s_e: match_ok = True
         elif t_pari == "X" and s_d == s_e: match_ok = True
@@ -263,20 +259,10 @@ def selectionner_meilleur_pari_value(res, tous_paris):
         elif t_pari == "BTTS_N" and (s_d == 0 or s_e == 0): match_ok = True
         
         if match_ok:
-            # Poids de base mathématique (Probabilité)
             poids = sc_prob * 100 
-            
-            # Boost N°1 : Si gros favori, on booste les scores à marge nette (2-0, 3-0, 3-1)
-            if abs(xg_diff) > 1.2 and abs(s_d - s_e) >= 2:
-                poids += 4.0
-                
-            # Boost N°2 : Si match ouvert (xG > 3.0), on booste les scores avec au moins 3 buts
-            if xg_total >= 3.0 and (s_d + s_e) >= 3:
-                poids += 3.0
-                
-            # Boost N°3 : Si match très spectaculaire (xG > 3.5), on booste les scores à +4 buts (3-1, 2-2, 3-2)
-            if xg_total >= 3.5 and (s_d + s_e) >= 4:
-                poids += 5.0
+            if abs(xg_diff) > 1.2 and abs(s_d - s_e) >= 2: poids += 4.0
+            if xg_total >= 3.0 and (s_d + s_e) >= 3: poids += 3.0
+            if xg_total >= 3.5 and (s_d + s_e) >= 4: poids += 5.0
                 
             if poids > meilleur_poids:
                 meilleur_poids = poids
@@ -448,15 +434,24 @@ with onglets[3]:
 # 7. ONGLET 5 : SCANNER INSTANTANÉ (ANTI-COTES MORTES)
 # ==========================================
 with onglets[4]:
-    st.subheader("📅 Scanner de Valeur (Uniquement Cotes $\ge$ @1.40)")
-
+    
+    # --- NOUVEAU : EXTRACTION DES 6 MEILLEURS SCORES EXACTS ---
+    tous_scores_exacts = []
     lignes_tableau = []
+    
     for m in matchs_semaine:
         r = m["res"]
-        
-        # Le Smart Score Selector trouve le pari et le score adéquat
         top, score_aligne = selectionner_meilleur_pari_value(r, m["paris"])
         score_1, p_s1 = score_aligne
+        
+        # Enregistrement pour le Top 6 (on garde la date, les équipes, le score et la proba)
+        tous_scores_exacts.append({
+            "match": f"{m['dom']} vs {m['ext']}",
+            "date": m["date_str"],
+            "score": score_1,
+            "prob": p_s1 * 100,
+            "pari": top['pari']
+        })
 
         t = top["type"]
         if t in ["1", "2"]: ia_txt = f"Avantage tactique net (xG {r['lambda_dom']:.1f}-{r['lambda_ext']:.1f})."
@@ -473,8 +468,6 @@ with onglets[4]:
             "Score Probable": f"{score_1} ({p_s1*100:.0f}%)",
             "Analyse Tactique": ia_txt
         })
-
-    if lignes_tableau:
-        df_scan = pd.DataFrame(lignes_tableau)
-        st.success(f"{len(df_scan)} matchs analysés. Diversité de scores activée.")
-        st.dataframe(df_scan, use_container_width=True, hide_index=True)
+        
+    # --- AFFICHAGE DU TOP 6 ---
+    st.subheader("🎯 Le
