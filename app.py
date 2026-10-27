@@ -470,4 +470,19 @@ with onglets[4]:
         })
         
     # --- AFFICHAGE DU TOP 6 ---
-   st.subheader("🎯 Le Top 6 des Scores Exacts (7 Prochains Jours)")
+st.subheader("🎯 Le Top 6 des Scores Exacts (7 Prochains Jours)")
+    top_6 = sorted(tous_scores_exacts, key=lambda x: x["prob"], reverse=True)[:6]
+    
+    if top_6:
+        cols = st.columns(3)
+        for i, sc in enumerate(top_6):
+            with cols[i % 3]:
+                st.info(f"**{sc['match']}**\n\n🎯 **Score Exact : {sc['score']}**\n\n*Fiabilité : {sc['prob']:.1f}%*")
+    
+    st.markdown("---")
+
+    st.subheader("📅 Scanner de Valeur (Uniquement Cotes $\ge$ @1.40)")
+    if lignes_tableau:
+        df_scan = pd.DataFrame(lignes_tableau)
+        st.success(f"{len(df_scan)} matchs analysés. Diversité de scores activée.")
+        st.dataframe(df_scan, use_container_width=True, hide_index=True)
