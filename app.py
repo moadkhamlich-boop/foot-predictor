@@ -284,7 +284,10 @@ def recuperer_matchs_ligue(code_compet):
 def collecter_matchs_7_jours():
     maintenant = datetime.now(timezone.utc)
     limite_7j = maintenant + timedelta(days=7)
-    liste_propre, vus = [], set()
+    liste_propre = []
+    
+    # Registre strict des équipes pour empêcher tout doublon
+    equipes_jouant_ce_jour = set()
 
     for nom_compet, code_api in CODES_COMPETITIONS.items():
         equipes_autorisees = obtenir_equipes_ligue(nom_compet)
@@ -292,17 +295,31 @@ def collecter_matchs_7_jours():
         est_europe = (code_api == "CL")
 
         for m in matchs_bruts:
-            try: dt_match = datetime.fromisoformat(m["utcDate"].replace("Z", "+00:00"))
-            except Exception: continue
-            if not (maintenant <= dt_match <= limite_7j): continue
-
-            cle_match = f"{m['homeTeam']['name']}_{dt_match.date()}"
-            if cle_match in vus: continue
-            vus.add(cle_match)
+            try: 
+                dt_match = datetime.fromisoformat(m["utcDate"].replace("Z", "+00:00"))
+            except Exception: 
+                continue
+                
+            if not (maintenant <= dt_match <= limite_7j): 
+                continue
 
             dom_csv = trouver_nom_csv_strict(m["homeTeam"]["name"], equipes_autorisees)
             ext_csv = trouver_nom_csv_strict(m["awayTeam"]["name"], equipes_autorisees)
-            if not dom_csv or not ext_csv or dom_csv == ext_csv: continue
+            if not dom_csv or not ext_csv or dom_csv == ext_csv: 
+                continue
+
+            # --- NOUVEAU FILTRE ANTI-CLONAGE ---
+            cle_dom = f"{dom_csv}_{dt_match.date()}"
+            cle_ext = f"{ext_csv}_{dt_match.date()}"
+            
+            # Si l'une des deux équipes joue déjà ce jour-là, on ignore totalement ce match fantôme
+            if cle_dom in equipes_jouant_ce_jour or cle_ext in equipes_jouant_ce_jour:
+                continue
+                
+            # On verrouille les deux équipes pour cette date
+            equipes_jouant_ce_jour.add(cle_dom)
+            equipes_jouant_ce_jour.add(cle_ext)
+            # -----------------------------------
 
             res = predire_rencontre(dom_csv, ext_csv, est_europe=est_europe)
             tous_paris = analyser_paris_match(dom_csv, ext_csv, res)
@@ -313,8 +330,8 @@ def collecter_matchs_7_jours():
                 "ligue": nom_compet, "dom": dom_csv, "ext": ext_csv,
                 "est_europe": est_europe, "res": res, "paris": tous_paris
             })
+            
     return sorted(liste_propre, key=lambda x: x["dt"])
-
 # ==========================================
 # 5. INTERFACE MOBILE & DESKTOP (WIDE)
 # ==========================================
