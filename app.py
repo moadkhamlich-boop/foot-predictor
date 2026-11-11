@@ -28,8 +28,26 @@ HEADERS = {"X-Auth-Token": API_TOKEN}
 GEMINI_API_KEY = "AQ.Ab8RN6L5dMyifo8wWnczhTj4dpkYg68sRGYYIMFDvJNTeW2kpA"
 
 CODES_COMPETITIONS = {
-    "UEFA Champions League": "CL", "Premier League": "PL", "La Liga": "PD",
-    "Serie A": "SA", "Bundesliga": "BL1", "Ligue 1": "FL1"
+    # --- Top 5 Europe & LDC ---
+    "UEFA Champions League": "CL", 
+    "Premier League": "PL", 
+    "La Liga": "PD",
+    "Serie A": "SA", 
+    "Bundesliga": "BL1", 
+    "Ligue 1": "FL1",
+    
+    # --- Autres Ligues de valeur ---
+    "Championship (Ang.)": "ELC",
+    "Eredivisie (Pays-Bas)": "DED",
+    "Primeira Liga (Portugal)": "PPL",
+    "Brasileirão (Brésil)": "BSA",
+    "Copa Libertadores": "CLI",
+
+    # --- Équipes Nationales & Tournois ---
+    "Coupe du Monde": "WC",
+    "Euro (Nations)": "EC",
+    "Ligue des Nations UEFA": "UNL",
+    "Amicaux Internationaux": "FINT"
 }
 
 # ==========================================
