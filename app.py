@@ -420,32 +420,44 @@ def selectionner_meilleur_pari_value(res, tous_paris):
     return top_pari, meilleur_score
 
 # ==========================================
-# 4. COLLECTE DES MATCHS SUR 7 JOURS (AVEC FILTRE JOURNEE OFFICIELLE)
+# 4. COLLECTE DES MATCHS SUR 7 JOURS (ANTI-FANTOMES STRICT)
 # ==========================================
 @st.cache_data(ttl=1800)
 def recuperer_matchs_ligue(code_compet):
-    url_comp = f"https://api.football-data.org/v4/competitions/{code_compet}"
-    matchday_actuel = None
-    try:
-        r_comp = requests.get(url_comp, headers=HEADERS, timeout=5)
-        if r_comp.status_code == 200:
-            matchday_actuel = r_comp.json().get("currentSeason", {}).get("currentMatchday")
-    except Exception:
-        matchday_actuel = None
+    maintenant = datetime.now(timezone.utc)
+    limite_7j = maintenant + timedelta(days=7)
+    date_from = maintenant.strftime("%Y-%m-%d")
+    date_to = limite_7j.strftime("%Y-%m-%d")
 
-    url = f"https://api.football-data.org/v4/competitions/{code_compet}/matches?status=SCHEDULED"
+    url = f"https://api.football-data.org/v4/competitions/{code_compet}/matches?dateFrom={date_from}&dateTo={date_to}&status=TIMED,SCHEDULED"
     try:
         req = requests.get(url, headers=HEADERS, timeout=6)
-        if req.status_code == 200:
-            matchs = req.json().get("matches", [])
-            if matchday_actuel is not None:
-                matchs_valides = [
-                    m for m in matchs
-                    if m.get("matchday") in [matchday_actuel, matchday_actuel + 1]
-                ]
-                return matchs_valides[:25]
-            return matchs[:25]
-        return []
+        if req.status_code != 200:
+            return []
+        
+        matchs = req.json().get("matches", [])
+        if not matchs:
+            return []
+
+        # Filtre 1 : Exclure les matchs sans heure precise (souvent 00:00:00Z = date fictive API)
+        matchs_horaires_valides = []
+        for m in matchs:
+            utc_str = m.get("utcDate", "")
+            if "T00:00:00Z" in utc_str:
+                continue
+            matchs_horaires_valides.append(m)
+
+        # Filtre 2 : Ne conserver que la prochaine journee reelle du championnat
+        matchdays_presents = [m.get("matchday") for m in matchs_horaires_valides if m.get("matchday") is not None]
+        if matchdays_presents:
+            prochaine_journee = min(matchdays_presents)
+            # On garde la journee imminente (et eventuellement la suivante si en milieu de semaine)
+            matchs_horaires_valides = [
+                m for m in matchs_horaires_valides
+                if m.get("matchday") in [prochaine_journee, prochaine_journee + 1]
+            ]
+
+        return matchs_horaires_valides[:25]
     except Exception:
         return []
 
@@ -479,12 +491,18 @@ def collecter_matchs_7_jours():
             if dom_csv == ext_csv:
                 continue
 
-            cle_dom = f"{dom_csv}_{dt_match.date()}"
-            cle_ext = f"{ext_csv}_{dt_match.date()}"
-            if cle_dom in equipes_jouant_ce_jour or cle_ext in equipes_jouant_ce_jour:
+            # Verrou anti-clonage : une equipe ne peut jouer qu'un seul match sur une fenetre de 48h
+            deja_programmee = False
+            for delta_h in [-1, 0, 1]:
+                jour_test = dt_match.date() + timedelta(days=delta_h)
+                if f"{dom_csv}_{jour_test}" in equipes_jouant_ce_jour or f"{ext_csv}_{jour_test}" in equipes_jouant_ce_jour:
+                    deja_programmee = True
+                    break
+            if deja_programmee:
                 continue
-            equipes_jouant_ce_jour.add(cle_dom)
-            equipes_jouant_ce_jour.add(cle_ext)
+
+            equipes_jouant_ce_jour.add(f"{dom_csv}_{dt_match.date()}")
+            equipes_jouant_ce_jour.add(f"{ext_csv}_{dt_match.date()}")
 
             res = predire_rencontre(dom_csv, ext_csv, est_europe=est_europe)
             tous_paris = analyser_paris_match(dom_csv, ext_csv, res)
