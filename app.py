@@ -420,15 +420,31 @@ def selectionner_meilleur_pari_value(res, tous_paris):
     return top_pari, meilleur_score
 
 # ==========================================
-# 4. COLLECTE DES MATCHS SUR 7 JOURS
+# 4. COLLECTE DES MATCHS SUR 7 JOURS (AVEC FILTRE JOURNEE OFFICIELLE)
 # ==========================================
 @st.cache_data(ttl=1800)
 def recuperer_matchs_ligue(code_compet):
+    url_comp = f"https://api.football-data.org/v4/competitions/{code_compet}"
+    matchday_actuel = None
+    try:
+        r_comp = requests.get(url_comp, headers=HEADERS, timeout=5)
+        if r_comp.status_code == 200:
+            matchday_actuel = r_comp.json().get("currentSeason", {}).get("currentMatchday")
+    except Exception:
+        matchday_actuel = None
+
     url = f"https://api.football-data.org/v4/competitions/{code_compet}/matches?status=SCHEDULED"
     try:
         req = requests.get(url, headers=HEADERS, timeout=6)
         if req.status_code == 200:
-            return req.json().get("matches", [])[:25]
+            matchs = req.json().get("matches", [])
+            if matchday_actuel is not None:
+                matchs_valides = [
+                    m for m in matchs
+                    if m.get("matchday") in [matchday_actuel, matchday_actuel + 1]
+                ]
+                return matchs_valides[:25]
+            return matchs[:25]
         return []
     except Exception:
         return []
